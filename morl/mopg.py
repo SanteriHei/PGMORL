@@ -75,21 +75,21 @@ def MOPG_worker(args, task_id, task, device, iteration, num_updates, start_time,
             ob_rms = args.ob_rms
     )
     if env_params['ob_rms'] is not None:
-        envs.venv.ob_rms = deepcopy(env_params['ob_rms'])
+        envs.env.ob_rms = deepcopy(env_params["ob_rms"])
     if env_params['ret_rms'] is not None:
-        envs.venv.ret_rms = deepcopy(env_params['ret_rms'])
+        envs.env.ret_rms = deepcopy(env_params['ret_rms'])
     if env_params['obj_rms'] is not None:
-        envs.venv.obj_rms = deepcopy(env_params['obj_rms'])
+        envs.env.obj_rms = deepcopy(env_params['obj_rms'])
 
     # build rollouts data structure
     rollouts = RolloutStorage(
             num_steps = args.num_steps, num_processes = args.num_processes,
-            obs_shape = envs.observation_space.shape,
+            obs_shape = envs.single_observation_space.shape,
             action_space = envs.action_space,
             recurrent_hidden_state_size = actor_critic.recurrent_hidden_state_size,
             obj_num=args.obj_num
     )
-    obs = envs.reset()
+    obs, _ = envs.reset()
     rollouts.obs[0].copy_(obs)
     rollouts.to(device)
 
@@ -117,7 +117,7 @@ def MOPG_worker(args, task_id, task, device, iteration, num_updates, start_time,
                 value, action, action_log_prob, recurrent_hidden_states = actor_critic.act(
                     rollouts.obs[step], rollouts.recurrent_hidden_states[step],
                     rollouts.masks[step])
-            
+
             obs, _, done, infos = envs.step(action)
             obj_tensor = torch.zeros([args.num_processes, args.obj_num])
 

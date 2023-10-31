@@ -10,6 +10,7 @@ import time
 from glob import glob
 
 import gymnasium
+from gymnasium.utils.step_api_compatibility import step_api_compatibility
 
 
 class Monitor(gymnasium.Wrapper):
@@ -61,9 +62,15 @@ class Monitor(gymnasium.Wrapper):
     def step(self, action):
         if self.needs_reset:
             raise RuntimeError("Tried to step environment that needs reset")
-        ob, rew, done, info = self.env.step(action)
+        ob, rew, terminated, truncated, info = self.env.step(action)
+
+        # To get the "done" converted correctly, we use the utility function for the conversion
+        _, _, done, _ = step_api_compatibility(
+            (ob, rew, terminated, truncated, info), output_truncation_bool=False
+        )
+
         self.update(ob, rew, done, info)
-        return (ob, rew, done, info)
+        return (ob, rew, terminated, truncated, info)
 
     def update(self, ob, rew, done, info):
         self.rewards.append(rew)

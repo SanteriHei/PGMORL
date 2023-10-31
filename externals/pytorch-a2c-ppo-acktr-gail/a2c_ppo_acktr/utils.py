@@ -37,9 +37,11 @@ class AddBias(nn.Module):
     def forward(self, x):
         if x.dim() == 2:
             bias = self._bias.t().view(1, -1)
+        # PATCH: new addition to ensure correct shapes
+        elif x.dim() == 3:
+            bias = self._bias.t().view(1, 1, -1)
         else:
             bias = self._bias.t().view(1, -1, 1, 1)
-
         return x + bias
 
 

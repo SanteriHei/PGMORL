@@ -49,7 +49,7 @@ for i, seed in enumerate(seeds):
         cmd = 'python morl/run.py '\
             '--env-name mo-hopper-v4 --obj-num 3 '\
             '--seed {} '\
-            '--num-env-steps 100 '\
+            '--num-env-steps 80000000 '\
             '--warmup-iter 200 '\
             '--update-iter 40 '\
             '--min-weight 0.0 '\
