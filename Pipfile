@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = false
+name = "pip_conf_index_global"
+
+[packages]
+torch = "*"
+torchvision = "*"
+torchaudio = "*"
+mo-gymnasium = "*"
+scipy = "*"
+gymnasium = {extras = ["mujoco"], version = "*"}
+
+[dev-packages]
+python-lsp-server = {extras = ["all"], version = "*"}
+python-lsp-ruff = "*"
+ipython = "*"
+
+[requires]
+python_version = "3.10"
+python_full_version = "3.10.12"

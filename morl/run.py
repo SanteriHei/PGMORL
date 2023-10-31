@@ -1,3 +1,4 @@
+# ruff: noqa
 import os, sys
 base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.append(base_dir)
@@ -7,8 +8,6 @@ sys.path.append(os.path.join(base_dir, 'externals/pytorch-a2c-ppo-acktr-gail/'))
 from arguments import get_parser
 import morl
 import torch
-import gym
-import numpy as np
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 

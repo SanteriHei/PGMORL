@@ -3,6 +3,7 @@ base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.append(base_dir)
 sys.path.append(os.path.join(base_dir, 'externals/baselines'))
 sys.path.append(os.path.join(base_dir, 'externals/pytorch-a2c-ppo-acktr-gail'))
+sys.path.append(os.path.join(base_dir, 'externals/gymnasium_helpers'))
 
 import numpy as np
 from collections import deque
@@ -10,10 +11,14 @@ from copy import deepcopy
 import time
 import torch
 
-import gym
+# import gym
+import mo_gymnasium as mo_gym
 # import a2c_ppo_acktr
 from a2c_ppo_acktr import algo, utils
-from a2c_ppo_acktr.envs import make_vec_envs, make_env
+from gymnasium_helpers.envs import make_vec_envs, make_eval_env
+
+
+# from a2c_ppo_acktr.envs import make_vec_envs, make_env
 from a2c_ppo_acktr.model import Policy
 from a2c_ppo_acktr.storage import RolloutStorage
 
@@ -23,21 +28,20 @@ from sample import Sample
 Evaluate a policy sample.
 '''
 def evaluation(args, sample):
-    eval_env = gym.make(args.env_name)
+    eval_env = make_eval_env(args.env_name, "cpu")
     objs = np.zeros(args.obj_num)
     ob_rms = sample.env_params['ob_rms']
     policy = sample.actor_critic
     with torch.no_grad():
         for eval_id in range(args.eval_num):
-            eval_env.seed(args.seed + eval_id)
-            ob = eval_env.reset()
+            ob, _ = eval_env.reset(seed=args.seed + eval_id)
             done = False
             gamma = 1.0
             while not done:
                 if args.ob_rms:
                     ob = np.clip((ob - ob_rms.mean) / np.sqrt(ob_rms.var + 1e-8), -10.0, 10.0)
                 _, action, _, _ = policy.act(torch.Tensor(ob).unsqueeze(0), None, None, deterministic=True)
-                ob, _, done, info = eval_env.step(action)
+                ob, _, done, info = eval_env.step(action.T.squeeze())
                 objs += gamma * info['obj']
                 if not args.raw:
                     gamma *= args.gamma
@@ -64,9 +68,12 @@ def MOPG_worker(args, task_id, task, device, iteration, num_updates, start_time,
     weights_str = (args.obj_num * '_{:.3f}').format(*task.scalarization.weights)
 
     # make envs
-    envs = make_vec_envs(env_name=args.env_name, seed=args.seed, num_processes=args.num_processes, \
-                        gamma=args.gamma, log_dir=None, device=device, allow_early_resets=False, \
-                        obj_rms=args.obj_rms, ob_rms = args.ob_rms)
+    envs = make_vec_envs(
+            env_name=args.env_name, seed=args.seed,
+            num_processes=args.num_processes, gamma=args.gamma, log_dir=None,
+            device=device, allow_early_resets=False, obj_rms=args.obj_rms,
+            ob_rms = args.ob_rms
+    )
     if env_params['ob_rms'] is not None:
         envs.venv.ob_rms = deepcopy(env_params['ob_rms'])
     if env_params['ret_rms'] is not None:
@@ -75,9 +82,13 @@ def MOPG_worker(args, task_id, task, device, iteration, num_updates, start_time,
         envs.venv.obj_rms = deepcopy(env_params['obj_rms'])
 
     # build rollouts data structure
-    rollouts = RolloutStorage(num_steps = args.num_steps, num_processes = args.num_processes,
-                              obs_shape = envs.observation_space.shape, action_space = envs.action_space,
-                              recurrent_hidden_state_size = actor_critic.recurrent_hidden_state_size, obj_num=args.obj_num)
+    rollouts = RolloutStorage(
+            num_steps = args.num_steps, num_processes = args.num_processes,
+            obs_shape = envs.observation_space.shape,
+            action_space = envs.action_space,
+            recurrent_hidden_state_size = actor_critic.recurrent_hidden_state_size,
+            obj_num=args.obj_num
+    )
     obs = envs.reset()
     rollouts.obs[0].copy_(obs)
     rollouts.to(device)
@@ -144,9 +155,18 @@ def MOPG_worker(args, task_id, task, device, iteration, num_updates, start_time,
         rollouts.after_update()
 
         env_params = {}
-        env_params['ob_rms'] = deepcopy(envs.ob_rms) if envs.ob_rms is not None else None
-        env_params['ret_rms'] = deepcopy(envs.ret_rms) if envs.ret_rms is not None else None
-        env_params['obj_rms'] = deepcopy(envs.obj_rms) if envs.obj_rms is not None else None
+
+        env_ob_rms = envs.get_wrapper_attr("ob_rms")
+        env_ret_rms = envs.get_wrapper_attr("ret_rms")
+        env_obj_rms = envs.get_wrapper_attr("obj_rms")
+            
+        env_params['ob_rms'] = deepcopy(env_ob_rms) if env_ob_rms is not None else None
+        env_params['ret_rms'] = deepcopy(env_ret_rms) if env_ret_rms is not None else None
+        env_params['obj_rms'] = deepcopy(env_obj_rms) if env_obj_rms is not None else None
+
+        # env_params['ob_rms'] = deepcopy(envs.ob_rms) if envs.ob_rms is not None else None
+        # env_params['ret_rms'] = deepcopy(envs.ret_rms) if envs.ret_rms is not None else None
+        # env_params['obj_rms'] = deepcopy(envs.obj_rms) if envs.obj_rms is not None else None
 
         # evaluate new sample
         sample = Sample(env_params, deepcopy(actor_critic), deepcopy(agent))

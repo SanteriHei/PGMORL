@@ -4,11 +4,12 @@ sys.path.append(base_dir)
 sys.path.append(os.path.join(base_dir, 'externals/pytorch-a2c-ppo-acktr-gail'))
 sys.path.append(os.path.join(base_dir, 'externals/baselines/'))
 
-import environments
+# import environments
 from a2c_ppo_acktr.model import Policy
 import torch
-import gym
-from gym import wrappers
+import mo_gymnasium as mo_gym
+import gymnasium as gym
+# from gym import wrappers
 import numpy as np
 import argparse
 import os
@@ -48,16 +49,18 @@ save_path = os.path.dirname(state_dict_path)
 device = 'cpu'
 torch.set_default_dtype(torch.float64)
 
-env = gym.make(env_name)
-env.seed(args.seed)
+env = mo_gym.make(env_name)
 if record_video:
-    env = wrappers.Monitor(env, os.path.join(save_path, 'videos', record_video_filename), force = True)
+    video_dir_path = os.path.join(save_path, "videos")
+    env = gym.wrappers.RecordVideo(env, video_dir_path)
 
 policy = Policy(
     env.observation_space.shape,
     env.action_space,
     base_kwargs={'recurrent': False, 'layernorm' : args.layernorm},
     obj_num=env.obj_dim)
+
+_ = env.reset(seed=args.seed)
 
 state_dict = torch.load(state_dict_path)
 policy.load_state_dict(state_dict)
@@ -72,6 +75,7 @@ if args.env_params is not None and os.path.exists(args.env_params):
     ob_rms = env_params['ob_rms']
 
 while True:
+
     obs = env.reset()
     obj = np.zeros(env.obj_dim)
     t = time()

@@ -4,7 +4,7 @@ from mpi4py import MPI
 from baselines.common import set_global_seeds
 from baselines import logger
 from baselines.common.cmd_util import make_robotics_env, robotics_arg_parser
-import mujoco_py
+import mujoco
 
 
 def train(env_id, num_timesteps, seed):
@@ -13,7 +13,7 @@ def train(env_id, num_timesteps, seed):
     rank = MPI.COMM_WORLD.Get_rank()
     sess = U.single_threaded_session()
     sess.__enter__()
-    mujoco_py.ignore_mujoco_warnings().__enter__()
+    #mujoco_py.ignore_mujoco_warnings().__enter__()
     workerseed = seed + 10000 * rank
     set_global_seeds(workerseed)
     env = make_robotics_env(env_id, workerseed, rank=rank)
