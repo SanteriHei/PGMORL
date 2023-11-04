@@ -10,6 +10,7 @@ torchaudio = "*"
 mo-gymnasium = "*"
 scipy = "*"
 gymnasium = {extras = ["mujoco"], version = "*"}
+"ruamel.yaml" = "*"
 
 [dev-packages]
 python-lsp-server = {extras = ["all"], version = "*"}
