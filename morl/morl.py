@@ -1,6 +1,7 @@
 import os
 import pickle
 import sys  # noqa
+import warnings
 
 # import python packages
 import time
@@ -24,8 +25,16 @@ from task import Task
 from utils import generate_weights_batch_dfs, print_info
 from warm_up import initialize_warm_up_batch
 
+from ..externals.gymnasium_helpers.gymnasium_helpers.logger import get_logger
+
 #  import environments  # noqa
 
+warnings.filterwarnings(
+        "ignore", category=DeprecationWarning, module="gymnasium.wrappers"
+)
+warnings.filterwarnings(
+        "ignore", category=UserWarning, module="gymnasium.core"
+) 
 
 def run(args):
 
@@ -36,6 +45,8 @@ def run(args):
     torch.set_num_threads(1)
     device = torch.device("cpu")
 
+    logger = get_logger("main")
+
     # build a scalarization template
     scalarization_template = WeightedSumScalarization(
         num_objs=args.obj_num, weights=np.ones(args.obj_num) / args.obj_num)
@@ -43,8 +54,10 @@ def run(args):
     total_num_updates = int(
         args.num_env_steps) // args.num_steps // args.num_processes
 
+    logger.info((f"Running the algorithm for {int(args.num_env_steps)}. This "
+                f"totals to {total_num_updates} updates"))
     start_time = time.time()
-
+    
     # initialize ep and population and opt_graph
     ep = EP()
     if args.obj_num == 2:
@@ -54,6 +67,9 @@ def run(args):
     else:
         raise NotImplementedError
     opt_graph = OptGraph()
+    
+    logger.info(f"Initialized the population for {args.obj_num} objectives")
+
 
     # Construct tasks for warm up
     elite_batch, scalarization_batch = initialize_warm_up_batch(args, device)
@@ -66,13 +82,20 @@ def run(args):
     iteration = 0
     while iteration < total_num_updates:
         if episode == 0:
+            logger.info("<---------Starting warm-up-state--------->")
             print_info(
                 '\n------------------------------- Warm-up Stage -------------------------------')
         else:
+
+            logger.info(f"<---------Evolutionary state: Generation {episode:3}--------->")
             print_info(
                 '\n-------------------- Evolutionary Stage: Generation {:3} --------------------'.format(episode))
 
         episode += 1
+
+        if iteration%100 == 0:
+            logger.info((f"Starting iteration {iteration}/{total_num_updates} "
+                        f"({100*(iteration/total_num_updates):.2f}%)"))
 
         offspring_batch = np.array([])
 
