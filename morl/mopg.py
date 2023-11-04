@@ -5,6 +5,7 @@ sys.path.append(os.path.join(base_dir, 'externals/baselines'))
 sys.path.append(os.path.join(base_dir, 'externals/pytorch-a2c-ppo-acktr-gail'))
 sys.path.append(os.path.join(base_dir, 'externals/gymnasium_helpers'))
 
+
 import numpy as np
 from collections import deque
 from copy import deepcopy
@@ -21,6 +22,7 @@ from gymnasium_helpers.envs import make_vec_envs, make_eval_env
 # from a2c_ppo_acktr.envs import make_vec_envs, make_env
 from a2c_ppo_acktr.model import Policy
 from a2c_ppo_acktr.storage import RolloutStorage
+
 
 from sample import Sample
 
@@ -85,7 +87,7 @@ def MOPG_worker(args, task_id, task, device, iteration, num_updates, start_time,
     rollouts = RolloutStorage(
             num_steps = args.num_steps, num_processes = args.num_processes,
             obs_shape = envs.single_observation_space.shape,
-            action_space = envs.action_space,
+            action_space = envs.single_action_space,
             recurrent_hidden_state_size = actor_critic.recurrent_hidden_state_size,
             obj_num=args.obj_num
     )
@@ -107,23 +109,29 @@ def MOPG_worker(args, task_id, task, device, iteration, num_updates, start_time,
         torch.manual_seed(j)
         if args.use_linear_lr_decay:
             # decrease learning rate linearly
-            utils.update_linear_schedule( \
-                agent.optimizer, j * args.lr_decay_ratio, \
-                total_num_updates, args.lr)
-        
+            utils.update_linear_schedule(
+                    agent.optimizer, j * args.lr_decay_ratio, 
+                    total_num_updates, args.lr
+            )
+         
         for step in range(args.num_steps):
             # Sample actions
             with torch.no_grad():
                 value, action, action_log_prob, recurrent_hidden_states = actor_critic.act(
                     rollouts.obs[step], rollouts.recurrent_hidden_states[step],
                     rollouts.masks[step])
-
+        
             obs, _, done, infos = envs.step(action)
             obj_tensor = torch.zeros([args.num_processes, args.obj_num])
 
             for idx, info in enumerate(infos):
-                obj_tensor[idx] = torch.from_numpy(info['obj'])
-                episode_obj[idx] = info['obj_raw'] if episode_obj[idx] is None else episode_obj[idx] + info['obj_raw']
+                if "final_info" in info:
+                    final_obj = info["final_info"]["obj"]
+                    obj_tensor[idx] = torch.from_numpy(final_obj)
+                    episode_obj[idx] = final_obj if episode_obj[idx] is None else episode_obj[idx] + final_obj
+                else:
+                    obj_tensor[idx] = torch.from_numpy(info['obj'])
+                    episode_obj[idx] = info['obj_raw'] if episode_obj[idx] is None else episode_obj[idx] + info['obj_raw']
                 if 'episode' in info.keys():
                     episode_rewards.append(info['episode']['r'])
                     episode_lens.append(info['episode']['l'])

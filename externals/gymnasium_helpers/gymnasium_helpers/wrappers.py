@@ -52,8 +52,6 @@ class TorchWrapper(gym.Wrapper, gym.utils.RecordConstructorArgs):
         if isinstance(action, torch.Tensor):
             action = action.cpu().numpy()
         obs, rewards, terminated, truncated, info = self.env.step(action)
-
-        print(info)
         obs = torch.from_numpy(obs).to(self.device)
         rewards = torch.from_numpy(rewards).float().to(self.device)
         return obs, rewards, terminated, truncated, info
@@ -111,18 +109,40 @@ class NormalizeRewObs(gym.Wrapper, gym.utils.RecordConstructorArgs):
         self.gamma = gamma
         self.epsilon = epsilon
 
+    def step(self, action):
+        obs, rews, terminated, truncated, infos = self.env.step(action)
+        return self._process_step(obs, rews, terminated, truncated, infos)
+
+        
     def step_wait(self):
         obs, rews, terminated, truncated, infos = self.env.step_wait()
+        return self._process_step(obs, rews, terminated, truncated, infos)
 
-        self.ret = self.ret * self.gamma + rews
-        if "obj" in infos[0]:
-            for info in infos:
-                info["obj_raw"] = info["obj"]
-            obj = np.array([info["obj"] for info in infos])
-            self.obj = self.obj * self.gamma + \
-                obj if self.obj[0] is not None else obj
 
-        obs = self.obfilt(obs)
+    def _process_step(self, obs, rews, terminated, truncated, infos):
+        # In the original multi-objective environments, the returns were always
+        # zero. This was a simple hack to come around the fact that the gym 
+        # environments expected real valued rewards (i.e. the shape of rewards
+        # was (num_envs, ) instead of (num_envs, num_objectives)). Thus, we 
+        # we just take the mean along the objectives to make the shapes correct
+        # (This does not matter as the 'rewards' are not used, and instead the
+        # 'obj' stored in the info is used.
+        self.ret = self.ret * self.gamma + rews.mean(axis=1)
+        if "obj" in infos:
+            infos["obj_raw"] = infos["obj"].copy()
+            # Required for VecInfoList Wrapper to work
+            infos["_obj_raw"] = infos["_obj"].copy()
+            obj = infos["obj"]
+            if self.obj[0] is not None:
+                # For some reason, some of the values in "obj" might be None (sync problem?)
+                # So just check which values are available and update them.
+                for i in range(len(obj)):
+                    if obj[i] is not None:
+                        self.obj[i] = self.obj[i] * self.gamma + obj[i]
+            else:
+                self.obj = obj
+
+        obs = self._obfilt(obs)
 
         if self.ret_rms:
             self.ret_rms.update(self.ret)
@@ -131,7 +151,7 @@ class NormalizeRewObs(gym.Wrapper, gym.utils.RecordConstructorArgs):
                 a_min=-self.cliprew, a_max=self.cliprew
             )
 
-        if self.obs_rms:
+        if self.obj_rms:
             self.obj_rms.update(self.obj)
             for info in infos:
                 info["obj"] = np.clip(
@@ -139,7 +159,7 @@ class NormalizeRewObs(gym.Wrapper, gym.utils.RecordConstructorArgs):
                     -self.cliprew, self.cliprew
                 )
         self.ret[terminated] = 0.0
-        if "obj" in infos[0]:
+        if "obj" in infos:
             self.obj[terminated] = np.zeros_like(self.obj[terminated])
         return obs, rews, terminated, truncated, infos
 
@@ -148,8 +168,8 @@ class NormalizeRewObs(gym.Wrapper, gym.utils.RecordConstructorArgs):
             if self.training and update:
                 self.ob_rms.update(obs)
             obs = np.clip(
-                (obs - self.obs_rms.mean) /
-                np.sqrt(self.obs_rms.var + self.epsilon),
+                (obs - self.ob_rms.mean) /
+                np.sqrt(self.ob_rms.var + self.epsilon),
                 a_min=-self.clipob, a_max=self.clipob
             )
         return obs

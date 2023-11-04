@@ -11,6 +11,7 @@ from glob import glob
 
 import gymnasium
 from gymnasium.utils.step_api_compatibility import step_api_compatibility
+import numpy as np
 
 
 class Monitor(gymnasium.Wrapper):
@@ -76,9 +77,9 @@ class Monitor(gymnasium.Wrapper):
         self.rewards.append(rew)
         if done:
             self.needs_reset = True
-            eprew = sum(self.rewards)
+            eprew = np.asarray(self.rewards).sum(axis=0)
             eplen = len(self.rewards)
-            epinfo = {"r": round(eprew, 6), "l": eplen,
+            epinfo = {"r": np.round(eprew, 6), "l": eplen,
                       "t": round(time.time() - self.tstart, 6)}
             for k in self.info_keywords:
                 epinfo[k] = info[k]
