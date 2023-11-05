@@ -26,7 +26,7 @@ def make_eval_env(env_id: str, device: str):
 
 
 def make_env(env_id, seed, rank, log_dir, allow_early_resets, env_params=None):
-    def _thunk():
+    def _init_env():
         # Convert the environments to use the old 'step' api
         env = RewardToInfoWrapper(mo_gym.make(env_id))
 
@@ -49,7 +49,7 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets, env_params=None):
             )
         return env
 
-    return _thunk
+    return _init_env 
 
 
 def make_vec_envs(
@@ -72,7 +72,7 @@ def make_vec_envs(
 
     if len(envs) > 1:
         # Forking ok under UNIX
-        envs = AsyncVectorEnv(envs, context="fork")
+        envs = AsyncVectorEnv(envs)
         if len(envs.single_observation_space.shape) == 1:
             if gamma is None:
                 envs = NormalizeRewObs(
