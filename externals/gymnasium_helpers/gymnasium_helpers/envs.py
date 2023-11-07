@@ -62,7 +62,10 @@ def make_vec_envs(
     allow_early_resets: bool,
     env_params: Dict[str, Any] | None = None,
     obj_rms: bool = False,
-    ob_rms: bool = False
+    ob_rms: bool = False,
+    context: str | None = None,
+    use_shared_memory: bool = False,
+    daemonize: bool = False
 ):
 
     envs = [
@@ -72,7 +75,10 @@ def make_vec_envs(
 
     if len(envs) > 1:
         # Forking ok under UNIX
-        envs = AsyncVectorEnv(envs)
+        envs = AsyncVectorEnv(
+                envs, context=context, daemon=daemonize,
+                shared_memory=use_shared_memory
+        )
         if len(envs.single_observation_space.shape) == 1:
             if gamma is None:
                 envs = NormalizeRewObs(

@@ -74,7 +74,9 @@ def MOPG_worker(args, task_id, task, device, iteration, num_updates, start_time,
             env_name=args.env_name, seed=args.seed,
             num_processes=args.num_processes, gamma=args.gamma, log_dir=None,
             device=device, allow_early_resets=False, obj_rms=args.obj_rms,
-            ob_rms = args.ob_rms
+            ob_rms = args.ob_rms, context=args.context,
+            use_shared_memory=args.use_shared_memory,
+            daemonize=args.daemonize
     )
     if env_params['ob_rms'] is not None:
         envs.env.ob_rms = deepcopy(env_params["ob_rms"])

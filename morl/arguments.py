@@ -169,5 +169,21 @@ def get_parser():
         action='store_true',
         default=False,
         help='if use layernorm')
+    
+    # ===== MY ADDITIONS =====
+    # Add support for parsing different vectorization options
+    parser.add_argument(
+        "--context", type=str, default=None,
+        help="The context used for the multiprocesssing"
+    )
+    parser.add_argument(
+        "--no-shared-memory", action="store_false", dest="use_shared_memory",
+        help=("If the flag is set, the vectorized environmetns don't use "
+                "shared memory")
+    )
+    parser.add_argument(
+            "--daemonize", action="store_true",
+            help="If the flag is set, the 'daemon flag will be set for the subprocesses"
+    )
 
     return parser

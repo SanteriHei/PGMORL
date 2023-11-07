@@ -72,7 +72,9 @@ def initialize_warm_up_batch(args, device):
                 num_processes=args.num_processes,
                 gamma=args.gamma, log_dir=None, device=device,
                 allow_early_resets=False, obj_rms=args.obj_rms,
-                ob_rms=args.ob_rms
+                ob_rms=args.ob_rms, context=args.context,
+                use_shared_memory=args.use_shared_memory,
+                daemonize=args.daemonize
         )
         env_params = {}
         env_params['ob_rms'] = deepcopy(

@@ -1,6 +1,7 @@
 import os
 import pickle
 import sys  # noqa
+sys.path.append("externals/gymnasium_helpers")
 import warnings
 
 # import python packages
@@ -25,7 +26,7 @@ from task import Task
 from utils import generate_weights_batch_dfs, print_info
 from warm_up import initialize_warm_up_batch
 
-from ..externals.gymnasium_helpers.gymnasium_helpers.logger import get_logger
+from gymnasium_helpers.logger import get_logger
 
 #  import environments  # noqa
 
@@ -93,7 +94,7 @@ def run(args):
 
         episode += 1
 
-        if iteration%100 == 0:
+        if iteration%10 == 0:
             logger.info((f"Starting iteration {iteration}/{total_num_updates} "
                         f"({100*(iteration/total_num_updates):.2f}%)"))
 
