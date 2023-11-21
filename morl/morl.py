@@ -1,41 +1,47 @@
+import multiprocessing as mp
 import os
 import pickle
 import sys  # noqa
-sys.path.append("externals/gymnasium_helpers")
-import warnings
 
-# import python packages
+sys.path.append("externals/gymnasium_helpers")
 import time
+import warnings
+from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from multiprocessing import Event, Process, Queue
 
-# import third-party packages
 import numpy as np
 import torch
-import torch.optim as optim  # noqa
 from ep import EP
-from mopg import MOPG_worker
+from mopg import MOPG_worker, mopg_worker
 from opt_graph import OptGraph
 from population_2d import Population as Population2d
 from population_3d import Population as Population3d
 from sample import Sample
-
-# import our packages
 from scalarization_methods import WeightedSumScalarization
 from task import Task
 from utils import generate_weights_batch_dfs, print_info
 from warm_up import initialize_warm_up_batch
 
-from gymnasium_helpers.logger import get_logger
+
+# import python packages
+
+# import third-party packages
+import torch.optim as optim  # noqa
+
+# import our packages
+
+# from gymnasium_helpers.logger import get_logger
 
 #  import environments  # noqa
 
 warnings.filterwarnings(
-        "ignore", category=DeprecationWarning, module="gymnasium.wrappers"
+    "ignore", category=DeprecationWarning, module="gymnasium.wrappers"
 )
 warnings.filterwarnings(
-        "ignore", category=UserWarning, module="gymnasium.core"
-) 
+    "ignore", category=UserWarning, module="gymnasium.core"
+)
+
 
 def run(args):
 
@@ -43,10 +49,9 @@ def run(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.set_default_dtype(torch.float64)
+    # torch.set_default_tensor_type("float64")
     torch.set_num_threads(1)
     device = torch.device("cpu")
-
-    logger = get_logger("main")
 
     # build a scalarization template
     scalarization_template = WeightedSumScalarization(
@@ -55,10 +60,10 @@ def run(args):
     total_num_updates = int(
         args.num_env_steps) // args.num_steps // args.num_processes
 
-    logger.info((f"Running the algorithm for {int(args.num_env_steps)}. This "
-                f"totals to {total_num_updates} updates"))
+    print_info((f"Running the algorithm for {int(args.num_env_steps)} steps. "
+               f"This total to {total_num_updates} updates"))
     start_time = time.time()
-    
+
     # initialize ep and population and opt_graph
     ep = EP()
     if args.obj_num == 2:
@@ -68,34 +73,35 @@ def run(args):
     else:
         raise NotImplementedError
     opt_graph = OptGraph()
-    
-    logger.info(f"Initialized the population for {args.obj_num} objectives")
 
+    print_info(f"Initialized the population for {args.obj_num} objectives")
 
     # Construct tasks for warm up
     elite_batch, scalarization_batch = initialize_warm_up_batch(args, device)
     rl_num_updates = args.warmup_iter
     for sample, scalarization in zip(elite_batch, scalarization_batch):
         sample.optgraph_id = opt_graph.insert(
-            deepcopy(scalarization.weights), deepcopy(sample.objs), -1)
+            deepcopy(scalarization.weights), deepcopy(sample.objs), -1
+        )
 
     episode = 0
     iteration = 0
     while iteration < total_num_updates:
         if episode == 0:
-            logger.info("<---------Starting warm-up-state--------->")
+            print_info("<---------Starting warm-up-state--------->")
             print_info(
                 '\n------------------------------- Warm-up Stage -------------------------------')
         else:
 
-            logger.info(f"<---------Evolutionary state: Generation {episode:3}--------->")
+            print_info(
+                f"<---------Evolutionary state: Generation {episode:3}--------->")
             print_info(
                 '\n-------------------- Evolutionary Stage: Generation {:3} --------------------'.format(episode))
 
         episode += 1
 
-        if iteration%10 == 0:
-            logger.info((f"Starting iteration {iteration}/{total_num_updates} "
+        if iteration % 10 == 0:
+            print_info((f"Starting iteration {iteration}/{total_num_updates} "
                         f"({100*(iteration/total_num_updates):.2f}%)"))
 
         offspring_batch = np.array([])
@@ -108,36 +114,61 @@ def run(args):
             # each task is a (policy, weight) pair
             task_batch.append(Task(elite, scalarization))
 
-        # run MOPG for each task in parallel
-        processes = []
-        results_queue = Queue()
-        done_event = Event()
+        # Create a process pool with max workers to avoid over subscribing to 
+        # the resources
+        ctx = mp.get_context(args.context)
+        futures = []
+        with ProcessPoolExecutor(max_workers=args.num_processes, mp_context=ctx) as pool:
+            for task_id, task in enumerate(task_batch):
+                future = pool.submit(
+                    mopg_worker, args, task_id, task, device, iteration,
+                    rl_num_updates, start_time
+                )
+                futures.append(future)
 
-        for task_id, task in enumerate(task_batch):
-            p = Process(target=MOPG_worker,
-                        args=(args, task_id, task, device, iteration, rl_num_updates, start_time, results_queue, done_event))
-            p.start()
-            processes.append(p)
+            results = [fut.result() for fut in futures]
 
-        # collect MOPG results for offsprings and insert objs into objs buffer
-        all_offspring_batch = [[] for _ in range(len(processes))]
-        cnt_done_workers = 0
-        while cnt_done_workers < len(processes):
-            rl_results = results_queue.get()
-            task_id, offsprings = rl_results['task_id'], rl_results['offspring_batch']
+        # Collect the MOPG results for the offsprings and insert objs 
+        # into objs buffer
+        all_offspring_batch = [[] for _ in range(len(results))]
+        for task_id, offsprings in results:
             for sample in offsprings:
                 all_offspring_batch[task_id].append(Sample.copy_from(sample))
-            if rl_results['done']:
-                cnt_done_workers += 1
+
+        # # run MOPG for each task in parallel
+        # processes = []
+        # results_queue = Queue()
+        # done_event = Event()
+
+        # for task_id, task in enumerate(task_batch):
+        #     p = Process(
+        #         target=MOPG_worker, args=(args, task_id, task, device,
+        #                                   iteration, rl_num_updates,
+        #                                   start_time, results_queue,
+        #                                   done_event)
+        #     )
+        #     p.start()
+        #     processes.append(p)
+
+        # # collect MOPG results for offsprings and insert objs into objs buffer
+        # all_offspring_batch = [[] for _ in range(len(processes))]
+        # cnt_done_workers = 0
+        # while cnt_done_workers < len(processes):
+        #     rl_results = results_queue.get()
+        #     task_id, offsprings = rl_results['task_id'], rl_results['offspring_batch']
+        #     for sample in offsprings:
+        #         all_offspring_batch[task_id].append(Sample.copy_from(sample))
+        #     if rl_results['done']:
+        #         cnt_done_workers += 1
 
         # put all intermidiate policies into all_sample_batch for EP update
         all_sample_batch = []
         # store the last policy for each optimization weight for RA
-        last_offspring_batch = [None] * len(processes)
+        last_offspring_batch = [None] * len(results)
         # only the policies with iteration % update_iter = 0 are inserted into offspring_batch for population update
         # after warm-up stage, it's equivalent to the last_offspring_batch
         offspring_batch = []
-        for task_id in range(len(processes)):
+        for task_id in range(len(results)):
             offsprings = all_offspring_batch[task_id]
             prev_node_id = task_batch[task_id].sample.optgraph_id
             opt_weights = deepcopy(
@@ -151,7 +182,7 @@ def run(args):
                     offspring_batch.append(sample)
             last_offspring_batch[task_id] = offsprings[-1]
 
-        done_event.set()
+        # done_event.set()
 
         # -----------------------> Update EP <----------------------- #
         # update EP and population
@@ -163,7 +194,9 @@ def run(args):
             elite_batch, scalarization_batch = [], []
             weights_batch = []
             generate_weights_batch_dfs(
-                0, args.obj_num, args.min_weight, args.max_weight, args.delta_weight, [], weights_batch)
+                0, args.obj_num, args.min_weight,
+                args.max_weight, args.delta_weight, [], weights_batch
+            )
             for weights in weights_batch:
                 scalarization = deepcopy(scalarization_template)
                 scalarization.update_weights(weights)
@@ -175,8 +208,11 @@ def run(args):
                         best_sample, best_value = sample, value
                 elite_batch.append(best_sample)
         elif args.selection_method == 'prediction-guided':
-            elite_batch, scalarization_batch, predicted_offspring_objs = population.prediction_guided_selection(
-                args, iteration, ep, opt_graph, scalarization_template)
+            elite_batch, scalarization_batch, predicted_offspring_objs = \
+                population.prediction_guided_selection(
+                    args, iteration, ep, opt_graph,
+                    scalarization_template
+                )
         elif args.selection_method == 'random':
             elite_batch, scalarization_batch = population.random_selection(
                 args, scalarization_template)

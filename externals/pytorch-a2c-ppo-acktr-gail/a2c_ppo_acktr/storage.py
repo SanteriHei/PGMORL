@@ -8,33 +8,38 @@ def _flatten_helper(T, N, _tensor):
 
 class RolloutStorage(object):
     def __init__(self, num_steps, num_processes, obs_shape, action_space,
-                 recurrent_hidden_state_size, obj_num=1):
-        self.obs = torch.zeros(num_steps + 1, num_processes, *obs_shape)
+                 recurrent_hidden_state_size, obj_num=1, dtype=torch.float64):
+
+        self.obs = torch.zeros(
+                (num_steps + 1, num_processes, *obs_shape), dtype=dtype
+        )
         self.recurrent_hidden_states = torch.zeros(
-            num_steps + 1, num_processes, recurrent_hidden_state_size)
-        self.rewards = torch.zeros(num_steps, num_processes, obj_num)
-        self.value_preds = torch.zeros(num_steps + 1, num_processes, obj_num)
-        self.returns = torch.zeros(num_steps + 1, num_processes, obj_num)
-        self.action_log_probs = torch.zeros(num_steps, num_processes, 1)
+            (num_steps + 1, num_processes, recurrent_hidden_state_size),
+            dtype=dtype
+        )
+        self.rewards = torch.zeros((num_steps, num_processes, obj_num), dtype=dtype)
+        self.value_preds = torch.zeros((num_steps + 1, num_processes, obj_num), dtype=dtype)
+        self.returns = torch.zeros((num_steps + 1, num_processes, obj_num), dtype=dtype)
+        self.action_log_probs = torch.zeros((num_steps, num_processes, 1), dtype=dtype)
         if action_space.__class__.__name__ == 'Discrete':
             action_shape = 1
         else:
             action_shape = action_space.shape[0]
-        self.actions = torch.zeros(num_steps, num_processes, action_shape)
+        self.actions = torch.zeros((num_steps, num_processes, action_shape), dtype=dtype)
         if action_space.__class__.__name__ == 'Discrete':
             self.actions = self.actions.long()
-        self.masks = torch.ones(num_steps + 1, num_processes, 1)
+        self.masks = torch.ones((num_steps + 1, num_processes, 1), dtype=dtype)
 
         # Masks that indicate whether it's a true terminal state
         # or time limit end state
-        self.bad_masks = torch.ones(num_steps + 1, num_processes, 1)
+        self.bad_masks = torch.ones((num_steps + 1, num_processes, 1), dtype=dtype)
 
         self.num_steps = num_steps
         self.step = 0
 
         # assume the final reward is big larger than zero, so it's relatively safe to set zero as the lower-bound of utopian
-        self.utopian_z = torch.zeros(obj_num)
-        self.nadir_z = torch.zeros(obj_num)
+        self.utopian_z = torch.zeros((obj_num, ), dtype=dtype)
+        self.nadir_z = torch.zeros((obj_num, ), dtype=dtype)
 
     def to(self, device):
         self.obs = self.obs.to(device)

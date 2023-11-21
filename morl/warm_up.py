@@ -1,6 +1,6 @@
 import os
 import sys
-# ruff: noqa
+# # ruff: noqa
 
 base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.append(base_dir)
@@ -42,8 +42,18 @@ def initialize_warm_up_batch(args, device):
 
     # temp_env is only used for initialization
     temp_env = mo_gym.make(args.env_name)
+    envs = make_vec_envs(
+                env_name=args.env_name, seed=args.seed,
+                num_processes=args.num_processes,
+                gamma=args.gamma, log_dir=None, device=device,
+                allow_early_resets=False, obj_rms=args.obj_rms,
+                ob_rms=args.ob_rms, context=args.context,
+                use_shared_memory=args.use_shared_memory,
+                daemonize=args.daemonize
+    )
 
     for weights in weights_batch:
+        print(f"Weight {weights}")
         actor_critic = Policy(
             temp_env.observation_space.shape,
             temp_env.action_space,
@@ -67,26 +77,17 @@ def initialize_warm_up_batch(args, device):
             # NOTE: other algorithms are not supported yet
             raise NotImplementedError
 
-        envs = make_vec_envs(
-                env_name=args.env_name, seed=args.seed,
-                num_processes=args.num_processes,
-                gamma=args.gamma, log_dir=None, device=device,
-                allow_early_resets=False, obj_rms=args.obj_rms,
-                ob_rms=args.ob_rms, context=args.context,
-                use_shared_memory=args.use_shared_memory,
-                daemonize=args.daemonize
-        )
         env_params = {}
-        env_params['ob_rms'] = deepcopy(
-            envs.ob_rms) if envs.get_wrapper_attr("ob_rms") is not None else None
-        env_params['ret_rms'] = deepcopy(
-            envs.ret_rms) if envs.get_wrapper_attr("ret_rms") is not None else None
-        env_params['obj_rms'] = deepcopy(
-            envs.obj_rms) if envs.get_wrapper_attr("obj_rms") is not None else None
-        envs.close()
+        env_params['ob_rms'] = \
+            deepcopy(envs.ob_rms) if envs.get_wrapper_attr("ob_rms") is not None else None
+        env_params['ret_rms'] = \
+            deepcopy(envs.ret_rms) if envs.get_wrapper_attr("ret_rms") is not None else None
+        env_params['obj_rms'] = \
+            deepcopy(envs.obj_rms) if envs.get_wrapper_attr("obj_rms") is not None else None
 
         scalarization = WeightedSumScalarization(
-            num_objs=args.obj_num, weights=weights)
+            num_objs=args.obj_num, weights=weights
+        )
 
         sample = Sample(env_params, actor_critic, agent, optgraph_id=-1)
         objs = evaluation(args, sample)
@@ -95,6 +96,7 @@ def initialize_warm_up_batch(args, device):
         sample_batch.append(sample)
         scalarization_batch.append(scalarization)
 
+    envs.close()
     temp_env.close()
 
     return sample_batch, scalarization_batch

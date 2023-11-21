@@ -12,7 +12,7 @@ from gymnasium.vector import AsyncVectorEnv
 from gymnasium.wrappers import StepAPICompatibility, VectorListInfo
 
 from .file_monitor import Monitor
-from .wrappers import RewardToInfoWrapper, TorchWrapper, NormalizeRewObs 
+from .wrappers import RewardToInfoWrapper, TorchWrapper, NormalizeRewObs, TimeLimitMask
 
 
 
@@ -35,6 +35,9 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets, env_params=None):
 
         # seed cannot be set without resetting anymore.
         env.reset(seed=seed + rank)
+
+
+        env = TimeLimitMask(env)
         if log_dir is not None:
             env = Monitor(
                 env,
@@ -74,7 +77,6 @@ def make_vec_envs(
     ]
 
     if len(envs) > 1:
-        # Forking ok under UNIX
         envs = AsyncVectorEnv(
                 envs, context=context, daemon=daemonize,
                 shared_memory=use_shared_memory
@@ -86,13 +88,13 @@ def make_vec_envs(
                 )
             else:
                 envs = NormalizeRewObs(
-                        envs, gamma=gamma, obj_rms=obj_rms, ob=ob_rms
+                        envs, ret=True, gamma=gamma, obj_rms=obj_rms, ob=ob_rms
                 )
     else:
         # Use the synchnorized environment if there is only one environment 
         # for easier debugging time
         envs = MOSyncVectorEnv(envs)
-        if len(envs.observation_space.shape) == 1:
+        if len(envs.single_observation_space.shape) == 1:
                 
             if gamma is None:
                 envs = NormalizeRewObs(
@@ -103,6 +105,7 @@ def make_vec_envs(
                         envs, gamma=gamma, obj_rms=obj_rms, ob=ob_rms
                 )
     envs = TorchWrapper(envs, device)
+
     
     # Make the env to use the 'old' style step and info API
     envs = VectorListInfo(envs)

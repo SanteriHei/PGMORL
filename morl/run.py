@@ -4,6 +4,7 @@ base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.append(base_dir)
 sys.path.append(os.path.join(base_dir, 'externals/baselines/'))
 sys.path.append(os.path.join(base_dir, 'externals/pytorch-a2c-ppo-acktr-gail/'))
+import multiprocessing as mp
 
 from arguments import get_parser
 import morl
@@ -92,4 +93,5 @@ def main():
     logfile.close()
 
 if __name__ == "__main__":
+    mp.set_start_method("spawn")
     main()

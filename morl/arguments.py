@@ -173,6 +173,11 @@ def get_parser():
     # ===== MY ADDITIONS =====
     # Add support for parsing different vectorization options
     parser.add_argument(
+            "--num-envs", type=int, default=2,
+            help=("The amount of vectorized environments to create in "
+                  "each process")
+    )
+    parser.add_argument(
         "--context", type=str, default=None,
         help="The context used for the multiprocesssing"
     )

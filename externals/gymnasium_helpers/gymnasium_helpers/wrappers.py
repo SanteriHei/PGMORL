@@ -1,8 +1,24 @@
+from __future__ import annotations
+
+import pprint
 
 import gymnasium as gym
 import numpy as np
 import torch
 from gymnasium.wrappers.normalize import RunningMeanStd
+
+
+class TimeLimitMask(gym.Wrapper):
+    def __init__(self, env, max_episode_steps=None):
+        super().__init__(env)
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        if info is None:
+            print("'info' is none at TimeLimitMask")
+        if truncated:
+            info["bad_transition"] = True
+        return obs, reward, terminated, truncated, info
 
 
 class RewardToInfoWrapper(gym.Wrapper, gym.utils.RecordConstructorArgs):
@@ -15,12 +31,12 @@ class RewardToInfoWrapper(gym.Wrapper, gym.utils.RecordConstructorArgs):
         super().__init__(env)
 
     def step(self, action):
-        observation, reward, terminated, truncated, info = self.env.step(
+        obs, rewards, terminated, truncated, info = self.env.step(
             action)
         assert "obj" not in info, \
             f"'info' already contains 'obj', {info['obj']}"
-        info["obj"] = reward
-        return observation, reward, terminated, truncated, info
+        info["obj"] = rewards
+        return obs, rewards, terminated, truncated, info
 
 
 class TorchWrapper(gym.Wrapper, gym.utils.RecordConstructorArgs):
@@ -45,15 +61,14 @@ class TorchWrapper(gym.Wrapper, gym.utils.RecordConstructorArgs):
     def reset(self, *, seed=None, options=None):
         obs, info = self.env.reset(seed=seed, options=options)
         if isinstance(obs, np.ndarray):
-            obs = torch.from_numpy(obs).to(self.device)
+            obs = torch.from_numpy(obs).double().to(self.device)
         return obs, info
 
     def step(self, action):
         if isinstance(action, torch.Tensor):
             action = action.cpu().numpy()
         obs, rewards, terminated, truncated, info = self.env.step(action)
-        obs = torch.from_numpy(obs).to(self.device)
-        rewards = torch.from_numpy(rewards).float().to(self.device)
+        obs = torch.from_numpy(obs).double().to(self.device)
         return obs, rewards, terminated, truncated, info
 
     def step_async(self, actions):
@@ -64,8 +79,8 @@ class TorchWrapper(gym.Wrapper, gym.utils.RecordConstructorArgs):
 
     def step_wait(self):
         obs, rewards, terminated, truncated, info = self.env.step_wait()
-        obs = torch.from_numpy(obs).float().to(self.device)
-        rewards = torch.from_numpy(rewards).float().to(self.device)
+        obs = torch.from_numpy(obs).double().to(self.device)
+        rewards = torch.from_numpy(rewards).double().to(self.device)
         return obs, rewards, terminated, truncated, info
 
 
@@ -111,19 +126,18 @@ class NormalizeRewObs(gym.Wrapper, gym.utils.RecordConstructorArgs):
 
     def step(self, action):
         obs, rews, terminated, truncated, infos = self.env.step(action)
-        return self._process_step(obs, rews, terminated, truncated, infos)
+        x = self._process_step(obs, rews, terminated, truncated, infos)
+        return x
 
-        
     def step_wait(self):
         obs, rews, terminated, truncated, infos = self.env.step_wait()
         return self._process_step(obs, rews, terminated, truncated, infos)
 
-
     def _process_step(self, obs, rews, terminated, truncated, infos):
         # In the original multi-objective environments, the returns were always
-        # zero. This was a simple hack to come around the fact that the gym 
+        # zero. This was a simple hack to come around the fact that the gym
         # environments expected real valued rewards (i.e. the shape of rewards
-        # was (num_envs, ) instead of (num_envs, num_objectives)). Thus, we 
+        # was (num_envs, ) instead of (num_envs, num_objectives)). Thus, we
         # we just take the mean along the objectives to make the shapes correct
         # (This does not matter as the 'rewards' are not used, and instead the
         # 'obj' stored in the info is used.
@@ -153,11 +167,33 @@ class NormalizeRewObs(gym.Wrapper, gym.utils.RecordConstructorArgs):
 
         if self.obj_rms:
             self.obj_rms.update(self.obj)
-            for info in infos:
-                info["obj"] = np.clip(
-                    info["obj"] / np.sqrt(self.obj_rms.var + self.epsilon),
-                    -self.cliprew, self.cliprew
-                )
+            
+            # if this the final step, there is no "obj". 
+            # Instead, it is stored i the final_info
+            if "final_info" in infos:
+                for i in range(len(infos["final_info"])):
+                    if infos["final_info"][i]["obj"] is None:
+                        continue
+
+                    infos["final_info"][i]["obj"] = np.clip(
+                        infos["final_info"][i]["obj"] / np.sqrt(self.obj_rms.var + self.epsilon),
+                        -self.cliprew, self.cliprew
+                    )
+            else:
+                for i, obj in enumerate(infos["obj"]):
+                    # As this is done async, some of the objects might be missing
+                    if obj is None:
+                        continue
+
+                    infos["obj"][i] = np.clip(
+                        obj / np.sqrt(self.obj_rms.var + self.epsilon),
+                        -self.cliprew, self.cliprew
+                    )
+            # for info in infos:
+            #     info["obj"] = np.clip(
+            #         info["obj"] / np.sqrt(self.obj_rms.var + self.epsilon),
+            #         -self.cliprew, self.cliprew
+            #     )
         self.ret[terminated] = 0.0
         if "obj" in infos:
             self.obj[terminated] = np.zeros_like(self.obj[terminated])
