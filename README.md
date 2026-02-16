@@ -1,21 +1,28 @@
 # PG-MORL
+This repository is a fork of the implementation of the paper 
+[Prediction-Guided Multi-Objective Reinforcement Learning for Continuous Robot Control](http://people.csail.mit.edu/jiex/papers/PGMORL/) (**ICML 2020**). 
+The repository is adapted to work with the newer [gymnasium](https://gymnasium.farama.org/index.html)
+API and Mujoco bindings that make the installation much easier than with 
+the original implementation.
 
-This repository contains the implementation for the paper [Prediction-Guided Multi-Objective Reinforcement Learning for Continuous Robot Control](http://people.csail.mit.edu/jiex/papers/PGMORL/) (**ICML 2020**). 
-
-In this paper, we propose an evolutionary learning algorithm to compute a high-quality and dense Pareto solutions for multi-objective continuous robot control problems. We also design seven multi-objective continuous control benchmark problems based on [Mujoco](http://www.mujoco.org/), which are also included in this repository. This repository also contains the code for the baseline algorithms in the paper.
+In this paper, we propose an evolutionary learning algorithm to compute a 
+high-quality and dense Pareto solutions for multi-objective continuous robot
+control problems. We also design seven multi-objective continuous control
+benchmark problems based on [Mujoco](http://www.mujoco.org/), which are also 
+included in this repository. This repository also contains the code for the 
+baseline algorithms in the paper.
 
 ![teaser](images/teaser.gif)
-
 
 
 ## Installation
 
 #### Prerequisites
 
-- **Operating System**: tested on Ubuntu 16.04 and Ubuntu 18.04.
-- **Python Version**: >= 3.7.4.
-- **PyTorch Version**: >= 1.3.0.
-- **MuJoCo** : install mujoco and mujoco-py of version 2.0 by following the instructions in [mujoco-py](<https://github.com/openai/mujoco-py>).
+
+- **Python Version**: Tested on Python 3.11.
+- **PyTorch Version**: Tested on Pytorch >= 2.0.0.
+- **Gymnasium**: Tested with gymnasium <= 1.0.0.
 
 #### Install Dependencies
 
@@ -94,16 +101,14 @@ The main entrance of the training code is at  `morl/run.py`. We provide a traini
 We run all our experiments on VM instances with 96 Intel Skylake vCPUs and 86.4G memory on Google Cloud Platform without GPU. 
 
 
-
 ## Acknowledgement
 
 We use the implementation of [pytorch-a2c-ppo-acktr-gail](https://github.com/ikostrikov/pytorch-a2c-ppo-acktr-gail) as the underlying PPO implementation and modify it into our Multi-Objective Policy Gradient algorithm.
 
 
-
 ## Citation
 
-If you find our paper or code is useful, please consider citing: 
+If you find the codebase useful, please consider citing the original paper: 
 
 ```
 @inproceedings{xu2020prediction,
