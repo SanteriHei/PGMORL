@@ -14,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 import pymoo.indicators.hv
 import pymoo.util.ref_dirs
+import matplotlib.pyplot as plt
 from pymoo.indicators.distance_indicator import (
     DistanceIndicator as MooDistanceIndicator,
 )
@@ -244,11 +245,11 @@ def load_args(fp):
 def get_parser():
     parser = argparse.ArgumentParser(
         description="Upload PGMORL results into WANDB",
-        formatter_class=argparse.HelpFormatter,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("result_dir", type=str)
-    parser.add_argument("experiment_name", type=str)
-    parser.add_argument("experiment_group", type=str)
+    parser.add_argument("result_dir", type=pathlib.Path)
+    # parser.add_argument("experiment_name", type=str)
+    # parser.add_argument("experiment_group", type=str)
     # parser.add_argument("--use-disc-rets", action="store_true")
     # parser.add_argument("--entity", type=str, default="santeri-heiskanen")
     # parser.add_argument("--project-name", type=str, default="msc_bench")
@@ -257,13 +258,13 @@ def get_parser():
         "--reward-dim",
         type=int,
         default=2,
-        help="Reward dimension. Default %(default)s",
+        help="Reward dimension.",
     )
     parser.add_argument(
         "--n-sample-weights",
         type=int,
         default=100,
-        help="Amount of weights used to calculate EUM. Default %(default)s",
+        help="Amount of weights used to calculate EUM.",
     )
     # parser.add_argument(
     #     "--plot-spec", type=str, default="santeriheiskanen/pareto-front"
@@ -271,21 +272,23 @@ def get_parser():
     parser.add_argument(
         "--ref-point",
         nargs="*",
-        default=np.array([0, 0]),
-        help="Reference point for calculating hypervolume Default %(default)s",
+        default=None,
+        help="Reference point for calculating hypervolume.",
     )
-    # parser.add_argument(
-    #     "--ref-set-path",
-    #     type=pathlib.Path,
-    #     default=None,
-    #     help="Path to the reference set file for calculating IGB+",
-    # )
     parser.add_argument(
-        "--save-path",
+        "--ref-set-path",
+        type=pathlib.Path,
+        default=None,
+        help="Path to the reference set file for calculating IGB+",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
         type=pathlib.Path,
         default=None,
         help="Path to the save directory",
     )
+    parser.add_argument("--plot", action="store_true")
     return parser
 
 
@@ -384,7 +387,6 @@ def load_run(run_dir, ref_point: npt.NDArray, reward_dim: int, num_weights: int)
 
             avg_disc_objs = avg_disc_objs[pareto_ind]
             std_disc_objs = std_disc_objs[pareto_ind]
-
             hv = get_hypervol(args.ref_point, avg_objs)
             sparsity = get_sparsity(avg_objs)
             eum = get_expected_utility(avg_objs, eval_weights)
@@ -457,6 +459,9 @@ def load_run(run_dir, ref_point: npt.NDArray, reward_dim: int, num_weights: int)
 def upload_data(args):
     # Create npz files that contain results for each seed?
 
+    if args.ref_point is None:
+        args.ref_point = np.zeros(args.reward_dim)
+
     dirpath = pathlib.Path(args.result_dir)
 
     # Lets extract some info from the path
@@ -475,7 +480,7 @@ def upload_data(args):
     ), f"Unknown env {env!r}"
     date = "-".join(parts[2:5])
 
-    save_dir = pathlib.Path(args.save_dir)
+    save_dir = pathlib.Path(args.output_dir)
     save_dir = save_dir / f"{algo}-{env}-{date}"
     save_dir.mkdir(exist_ok=True, parents=True)
     print(f"Saving processed results to {save_dir!s}")
@@ -488,8 +493,23 @@ def upload_data(args):
             reward_dim=args.reward_dim,
             num_weights=args.n_sample_weights,
         )
+
+        if args.plot:
+            fig, ax = plt.subplots(1, 3, figsize=(10, 4))
+            ax[0].plot(seed_data["log_step"], seed_data["eval_undiscounted/eum"])
+            ax[0].set_title("EUM")
+            ax[1].plot(
+                seed_data["log_step"], seed_data["eval_undiscounted/hypervolume"]
+            )
+            ax[1].set_title("HV")
+            ax[2].plot(seed_data["log_step"], seed_data["eval_undiscounted/sparsity"])
+            ax[2].set_title("sparsity")
+            for i in range(ax.shape[0]):
+                ax[i].grid(True, alpha=0.25)
+            plt.show()
+
         print(f"Seed {seed} done!")
-        np.savez_compressed(save_dir / f"run-{seed}", *seed_data)
+        np.savez_compressed(save_dir / f"run-{seed}", **seed_data)
 
     print("Processing done!")
 
